@@ -13,8 +13,9 @@ const generateId = (): string => {
 interface TaskContextType {
   tasks: Task[];
   labels: Label[];
+  priorities: Priority[];
   filterOptions: FilterOptions;
-  addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+  addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'priority'> & { priority?: Priority }) => Promise<void>;
   updateTask: (id: string, updates: Partial<Task>) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
   toggleTaskComplete: (id: string) => Promise<void>;
@@ -24,6 +25,8 @@ interface TaskContextType {
   addComment: (taskId: string, text: string) => Promise<void>;
   addLabel: (name: string, color: string) => Promise<void>;
   deleteLabel: (id: string) => Promise<void>;
+  addPriority: (name: string, color: string) => Promise<void>;
+  deletePriority: (id: string) => Promise<void>;
   setFilterOptions: (options: Partial<FilterOptions>) => void;
   getFilteredTasks: () => Task[];
 }
@@ -33,6 +36,7 @@ const TaskContext = createContext<TaskContextType | undefined>(undefined);
 export const TaskProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [labels, setLabels] = useState<Label[]>([]);
+  const [priorities, setPriorities] = useState<Priority[]>([]);
   const [filterOptions, setFilterState] = useState<FilterOptions>({
     showCompleted: true,
   });
@@ -50,80 +54,114 @@ export const TaskProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     StorageService.saveLabels(labels);
   }, [labels]);
 
+  useEffect(() => {
+    StorageService.savePriorities(priorities);
+  }, [priorities]);
+
   const loadData = async () => {
-    const [loadedTasks, loadedLabels] = await Promise.all([
+    const [loadedTasks, loadedLabels, loadedPriorities] = await Promise.all([
       StorageService.getTasks(),
       StorageService.getLabels(),
+      StorageService.getPriorities(),
     ]);
     setTasks(loadedTasks);
     setLabels(loadedLabels);
+    if (loadedPriorities.length > 0) {
+      setPriorities(loadedPriorities);
+    } else {
+      // Create default priorities if none exist
+      const defaultPriorities: Priority[] = [
+        { id: generateId(), name: 'Low', color: '#34d399' },
+        { id: generateId(), name: 'Medium', color: '#f59e0b' },
+        { id: generateId(), name: 'High', color: '#ef4444' },
+      ];
+      setPriorities(defaultPriorities);
+    }
   };
 
   const addTask = async (taskData: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>) => {
+    let notificationId: string | undefined;
+    if (taskData.reminderEnabled && taskData.reminderDate) {
+      const scheduledId = await NotificationService.scheduleNotification(
+        generateId(),
+        'Task Reminder',
+        taskData.title,
+        taskData.reminderDate
+      );
+      notificationId = scheduledId ?? undefined;
+    }
+
+    const mediumPriority = priorities.find(p => p.name === 'Medium');
+    const defaultPriority = mediumPriority || priorities[0];
+
     const newTask: Task = {
       ...taskData,
       id: generateId(),
+      priority: taskData.priority || defaultPriority,
       createdAt: new Date(),
       updatedAt: new Date(),
+      notificationId,
     };
-
-    if (newTask.reminderEnabled && newTask.reminderDate) {
-      await NotificationService.scheduleNotification(
-        newTask.id,
-        'Task Reminder',
-        newTask.title,
-        newTask.reminderDate
-      );
-    }
 
     setTasks(prev => [...prev, newTask]);
   };
 
   const updateTask = async (id: string, updates: Partial<Task>) => {
-    setTasks(prev => prev.map(task => {
-      if (task.id === id) {
-        const updated = { ...task, ...updates, updatedAt: new Date() };
-        
-        if (updates.reminderEnabled !== undefined || updates.reminderDate !== undefined) {
-          if (updated.reminderEnabled && updated.reminderDate) {
-            NotificationService.scheduleNotification(
-              updated.id,
-              'Task Reminder',
-              updated.title,
-              updated.reminderDate
-            );
-          }
-        }
-        
-        return updated;
-      }
-      return task;
-    }));
+    const taskToUpdate = tasks.find(t => t.id === id);
+    if (!taskToUpdate) return;
+
+    if (taskToUpdate.notificationId) {
+      await NotificationService.cancelNotification(taskToUpdate.notificationId);
+    }
+
+    const updatedTask = { ...taskToUpdate, ...updates, updatedAt: new Date(), notificationId: undefined };
+
+    if (updatedTask.reminderEnabled && updatedTask.reminderDate && !updatedTask.completed) {
+      const newNotificationId = await NotificationService.scheduleNotification(
+        id,
+        'Task Reminder',
+        updatedTask.title,
+        updatedTask.reminderDate
+      );
+      updatedTask.notificationId = newNotificationId ?? undefined;
+    }
+
+    setTasks(prev => prev.map(task =>
+      task.id === id ? updatedTask : task
+    ));
   };
 
   const deleteTask = async (id: string) => {
+    const taskToDelete = tasks.find(t => t.id === id);
+    if (taskToDelete && taskToDelete.notificationId) {
+      await NotificationService.cancelNotification(taskToDelete.notificationId);
+    }
     setTasks(prev => prev.filter(task => task.id !== id));
   };
 
   const toggleTaskComplete = async (id: string) => {
-    setTasks(prev => prev.map(task => {
-      if (task.id === id) {
-        const completed = !task.completed;
-        
-        if (completed && task.recurrence && task.recurrence.type !== 'none') {
-          const nextDueDate = calculateNextDueDate(task.dueDate || new Date(), task.recurrence);
-          return {
-            ...task,
-            completed: false,
-            dueDate: nextDueDate,
-            updatedAt: new Date(),
-          };
-        }
-        
-        return { ...task, completed, updatedAt: new Date() };
+    const task = tasks.find(t => t.id === id);
+    if (!task) return;
+
+    const completed = !task.completed;
+
+    if (completed && task.recurrence && task.recurrence.type !== 'none') {
+      const nextDueDate = calculateNextDueDate(task.dueDate || new Date(), task.recurrence);
+      let nextReminderDate = undefined;
+
+      if (task.reminderEnabled && task.dueDate && task.reminderDate) {
+        const timeDiff = task.dueDate.getTime() - task.reminderDate.getTime();
+        nextReminderDate = new Date(nextDueDate.getTime() - timeDiff);
       }
-      return task;
-    }));
+
+      updateTask(id, {
+        completed: false,
+        dueDate: nextDueDate,
+        reminderDate: nextReminderDate,
+      });
+    } else {
+      updateTask(id, { completed });
+    }
   };
 
   const calculateNextDueDate = (currentDate: Date, recurrence: RecurrenceConfig): Date => {
@@ -220,6 +258,21 @@ export const TaskProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     })));
   };
 
+  const addPriority = async (name: string, color: string) => {
+    const priority: Priority = {
+      id: generateId(),
+      name,
+      color,
+    };
+    setPriorities(prev => [...prev, priority]);
+  };
+
+  const deletePriority = async (id: string) => {
+    setPriorities(prev => prev.filter(p => p.id !== id));
+    // Potentially unassign priority from tasks
+    setTasks(prev => prev.map(task => task.priority?.id === id ? { ...task, priority: undefined } : task));
+  };
+
   const setFilterOptions = (options: Partial<FilterOptions>) => {
     setFilterState(prev => ({ ...prev, ...options }));
   };
@@ -228,7 +281,7 @@ export const TaskProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return tasks.filter(task => {
       if (!filterOptions.showCompleted && task.completed) return false;
       
-      if (filterOptions.priority && task.priority !== filterOptions.priority) return false;
+      if (filterOptions.priorityId && task.priority?.id !== filterOptions.priorityId) return false;
       
       if (filterOptions.labelIds && filterOptions.labelIds.length > 0) {
         const hasMatchingLabel = task.labels.some(label => 
@@ -254,6 +307,7 @@ export const TaskProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       value={{
         tasks,
         labels,
+        priorities,
         filterOptions,
         addTask,
         updateTask,
@@ -265,6 +319,8 @@ export const TaskProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         addComment,
         addLabel,
         deleteLabel,
+        addPriority,
+        deletePriority,
         setFilterOptions,
         getFilteredTasks,
       }}

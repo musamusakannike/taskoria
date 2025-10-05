@@ -17,7 +17,11 @@ export interface Label {
   color: string;
 }
 
-export type Priority = 'low' | 'medium' | 'high';
+export interface Priority {
+  id: string;
+  name: string;
+  color: string;
+}
 
 export type RecurrenceType = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'none';
 
@@ -42,10 +46,11 @@ export interface Task {
   updatedAt: Date;
   reminderEnabled: boolean;
   reminderDate?: Date;
+  notificationId?: string;
 }
 
 export interface FilterOptions {
-  priority?: Priority;
+  priorityId?: string;
   labelIds?: string[];
   showCompleted: boolean;
   search?: string;

@@ -14,9 +14,11 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Task, Priority, RecurrenceType } from '../types';
+import { Task, Priority, RecurrenceType, Label } from '../types';
 import { useTasks } from '../context/TaskContext';
 import { breakDownTask } from '../services/gemini';
+import { PrioritySelector } from './Priority';
+import { LabelSelector } from './LabelSelector';
 
 interface TaskDetailSheetProps {
   task: Task | null;
@@ -24,7 +26,7 @@ interface TaskDetailSheetProps {
 }
 
 export const TaskDetailSheet: React.FC<TaskDetailSheetProps> = ({ task, onClose }) => {
-  const { updateTask, deleteTask, addSubtask, toggleSubtaskComplete, deleteSubtask, addComment } = useTasks();
+  const { updateTask, deleteTask, addSubtask, toggleSubtaskComplete, deleteSubtask, addComment, priorities, labels, deleteLabel } = useTasks();
   const bottomSheetRef = useRef<BottomSheet>(null);
   const snapPoints = useMemo(() => ['75%', '90%'], []);
 
@@ -122,7 +124,14 @@ export const TaskDetailSheet: React.FC<TaskDetailSheetProps> = ({ task, onClose 
     );
   };
 
-  const priorities: Priority[] = ['low', 'medium', 'high'];
+  const handleToggleLabel = (label: Label) => {
+    const isSelected = task.labels.some(l => l.id === label.id);
+    const newLabels = isSelected
+      ? task.labels.filter(l => l.id !== label.id)
+      : [...task.labels, label];
+    updateTask(task.id, { labels: newLabels });
+  };
+
   const recurrenceTypes: RecurrenceType[] = ['none', 'daily', 'weekly', 'monthly', 'yearly'];
 
   return (
@@ -163,25 +172,21 @@ export const TaskDetailSheet: React.FC<TaskDetailSheetProps> = ({ task, onClose 
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Priority</Text>
-          <View style={styles.priorityButtons}>
-            {priorities.map(p => (
-              <TouchableOpacity
-                key={p}
-                style={[
-                  styles.priorityButton,
-                  task.priority === p && styles.priorityButtonActive,
-                ]}
-                onPress={() => updateTask(task.id, { priority: p })}
-              >
-                <Text style={[
-                  styles.priorityButtonText,
-                  task.priority === p && styles.priorityButtonTextActive,
-                ]}>
-                  {p.charAt(0).toUpperCase() + p.slice(1)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <PrioritySelector
+            priorities={priorities}
+            selectedPriority={task.priority}
+            onSelectPriority={(p) => updateTask(task.id, { priority: p })}
+          />
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Labels</Text>
+          <LabelSelector
+            allLabels={labels}
+            selectedLabels={task.labels}
+            onToggleLabel={handleToggleLabel}
+            onDeleteLabel={deleteLabel}
+          />
         </View>
 
         <View style={styles.section}>
@@ -444,30 +449,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1f2937',
     marginBottom: 12,
-  },
-  priorityButtons: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  priorityButton: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    alignItems: 'center',
-  },
-  priorityButtonActive: {
-    backgroundColor: '#3b82f6',
-    borderColor: '#3b82f6',
-  },
-  priorityButtonText: {
-    color: '#6b7280',
-    fontWeight: '500',
-  },
-  priorityButtonTextActive: {
-    color: 'white',
   },
   recurrenceButtons: {
     flexDirection: 'row',
