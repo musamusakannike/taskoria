@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Task, Label } from '../types';
+import { Task, Label, Priority } from '../types';
 
 const TASKS_KEY = '@tasks';
 const LABELS_KEY = '@labels';
+const PRIORITIES_KEY = '@priorities';
 
 export const StorageService = {
   async getTasks(): Promise<Task[]> {
@@ -59,6 +60,24 @@ export const StorageService = {
       await AsyncStorage.setItem(LABELS_KEY, JSON.stringify(labels));
     } catch (error) {
       console.error('Error saving labels:', error);
+    }
+  },
+
+  async getPriorities(): Promise<Priority[]> {
+    try {
+      const prioritiesJson = await AsyncStorage.getItem(PRIORITIES_KEY);
+      return prioritiesJson ? JSON.parse(prioritiesJson) : [];
+    } catch (error) {
+      console.error('Error loading priorities:', error);
+      return [];
+    }
+  },
+
+  async savePriorities(priorities: Priority[]): Promise<void> {
+    try {
+      await AsyncStorage.setItem(PRIORITIES_KEY, JSON.stringify(priorities));
+    } catch (error) {
+      console.error('Error saving priorities:', error);
     }
   },
 };

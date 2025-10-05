@@ -12,16 +12,17 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useTasks } from '../context/TaskContext';
 
 export const QuickAddFAB: React.FC = () => {
-  const { addTask } = useTasks();
+  const { addTask, priorities } = useTasks();
   const [modalVisible, setModalVisible] = useState(false);
   const [taskTitle, setTaskTitle] = useState('');
 
   const handleAddTask = async () => {
     if (taskTitle.trim()) {
+      const mediumPriority = priorities.find(p => p.name === 'Medium');
       await addTask({
         title: taskTitle.trim(),
         completed: false,
-        priority: 'medium',
+        priority: mediumPriority,
         labels: [],
         subtasks: [],
         comments: [],

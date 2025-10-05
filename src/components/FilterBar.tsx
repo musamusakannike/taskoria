@@ -13,13 +13,12 @@ import { useTasks } from '../context/TaskContext';
 import { Priority } from '../types';
 
 export const FilterBar: React.FC = () => {
-  const { labels, filterOptions, setFilterOptions, addLabel } = useTasks();
+  const { labels, priorities, filterOptions, setFilterOptions, addLabel } = useTasks();
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showLabelModal, setShowLabelModal] = useState(false);
   const [newLabelName, setNewLabelName] = useState('');
   const [searchText, setSearchText] = useState(filterOptions.search || '');
 
-  const priorities: Priority[] = ['low', 'medium', 'high'];
   const labelColors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'];
 
   const handleAddLabel = (color: string) => {
@@ -36,7 +35,7 @@ export const FilterBar: React.FC = () => {
   };
 
   const activeFilters = [
-    filterOptions.priority ? 1 : 0,
+    filterOptions.priorityId ? 1 : 0,
     filterOptions.labelIds?.length || 0,
     !filterOptions.showCompleted ? 1 : 0,
   ].reduce((a, b) => a + b, 0);
@@ -100,20 +99,18 @@ export const FilterBar: React.FC = () => {
               <View style={styles.priorityOptions}>
                 {priorities.map(p => (
                   <TouchableOpacity
-                    key={p}
+                    key={p.id}
                     style={[
                       styles.priorityOption,
-                      filterOptions.priority === p && styles.priorityOptionActive,
+                      { backgroundColor: p.color },
+                      filterOptions.priorityId === p.id && styles.priorityOptionActive,
                     ]}
                     onPress={() => setFilterOptions({
-                      priority: filterOptions.priority === p ? undefined : p
+                      priorityId: filterOptions.priorityId === p.id ? undefined : p.id
                     })}
                   >
-                    <Text style={[
-                      styles.priorityOptionText,
-                      filterOptions.priority === p && styles.priorityOptionTextActive,
-                    ]}>
-                      {p.charAt(0).toUpperCase() + p.slice(1)}
+                    <Text style={styles.priorityOptionText}>
+                      {p.name}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -164,9 +161,9 @@ export const FilterBar: React.FC = () => {
             <TouchableOpacity
               style={styles.clearButton}
               onPress={() => {
-                setFilterOptions({ 
-                  priority: undefined, 
-                  labelIds: undefined, 
+                setFilterOptions({
+                  priorityId: undefined,
+                  labelIds: undefined,
                   showCompleted: true,
                   search: undefined,
                 });
@@ -312,20 +309,22 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
     alignItems: 'center',
+    opacity: 0.7,
   },
   priorityOptionActive: {
-    backgroundColor: '#3b82f6',
-    borderColor: '#3b82f6',
+    opacity: 1,
+    borderWidth: 2,
+    borderColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
   },
   priorityOptionText: {
-    color: '#6b7280',
-    fontWeight: '500',
-  },
-  priorityOptionTextActive: {
     color: 'white',
+    fontWeight: 'bold',
   },
   labelOptions: {
     flexDirection: 'row',
